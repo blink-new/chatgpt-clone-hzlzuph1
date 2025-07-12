@@ -1,194 +1,179 @@
-import { useChat } from '../contexts/ChatContext'
-import { useTheme } from './ThemeProvider'
+import { useState } from 'react'
 import { Button } from './ui/button'
 import { ScrollArea } from './ui/scroll-area'
-import { Separator } from './ui/separator'
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { 
   Plus, 
   MessageSquare, 
   MoreHorizontal, 
   Trash2, 
-  Edit3,
   Settings,
-  Sun,
-  Moon,
-  Monitor
+  LogOut,
+  User
 } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
 } from './ui/dropdown-menu'
+import { useChat } from '../contexts/ChatContext'
+import { useAuth } from '../contexts/AuthContext'
+import { formatDistanceToNow } from 'date-fns'
 import { cn } from '../lib/utils'
 
 export function Sidebar() {
-  const { chats, currentChatId, createNewChat, deleteChat, setCurrentChat } = useChat()
-  const { theme, setTheme } = useTheme()
+  const { 
+    chatSessions, 
+    currentChatSession, 
+    createNewChat, 
+    selectChatSession, 
+    deleteChat,
+    isLoading 
+  } = useChat()
+  const { user, signOut } = useAuth()
+  const [deletingChatId, setDeletingChatId] = useState<string | null>(null)
 
-  const handleNewChat = () => {
-    createNewChat()
-  }
-
-  const handleChatClick = (chatId: string) => {
-    setCurrentChat(chatId)
-  }
-
-  const handleDeleteChat = (chatId: string, e: React.MouseEvent) => {
+  const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    deleteChat(chatId)
-  }
-
-  const formatDate = (date: Date) => {
-    const now = new Date()
-    const diffTime = Math.abs(now.getTime() - date.getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    
-    if (diffDays === 1) return 'Today'
-    if (diffDays === 2) return 'Yesterday'
-    if (diffDays <= 7) return `${diffDays} days ago`
-    return date.toLocaleDateString()
-  }
-
-  const groupedChats = chats.reduce((groups, chat) => {
-    const dateKey = formatDate(chat.updatedAt)
-    if (!groups[dateKey]) {
-      groups[dateKey] = []
+    setDeletingChatId(chatId)
+    try {
+      await deleteChat(chatId)
+    } finally {
+      setDeletingChatId(null)
     }
-    groups[dateKey].push(chat)
-    return groups
-  }, {} as Record<string, typeof chats>)
+  }
+
+  const formatChatDate = (date: Date) => {
+    try {
+      return formatDistanceToNow(new Date(date), { addSuffix: true })
+    } catch {
+      return 'Unknown'
+    }
+  }
 
   return (
-    <div className="flex h-full w-full flex-col bg-sidebar border-r border-sidebar-border">
+    <div className="flex h-full flex-col bg-background border-r">
       {/* Header */}
-      <div className="flex items-center justify-between p-4">
-        <h2 className="text-lg font-semibold text-sidebar-foreground">ChatGPT</h2>
+      <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold">ChatGPT</h2>
+        </div>
         <Button
           variant="ghost"
           size="icon"
-          onClick={handleNewChat}
-          className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent"
+          onClick={createNewChat}
+          className="h-8 w-8"
         >
           <Plus className="h-4 w-4" />
         </Button>
       </div>
 
-      <Separator />
-
       {/* Chat List */}
-      <ScrollArea className="flex-1">
-        <div className="p-2 space-y-1">
-          {Object.entries(groupedChats).map(([dateGroup, groupChats]) => (
-            <div key={dateGroup}>
-              <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/60 uppercase tracking-wide">
-                {dateGroup}
-              </div>
-              {groupChats.map((chat) => (
-                <div
-                  key={chat.id}
-                  className={cn(
-                    "group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors",
-                    "hover:bg-sidebar-accent",
-                    currentChatId === chat.id && "bg-sidebar-accent"
-                  )}
-                  onClick={() => handleChatClick(chat.id)}
-                >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <MessageSquare className="h-4 w-4 text-sidebar-foreground/60 shrink-0" />
-                    <span className="text-sm text-sidebar-foreground truncate">
-                      {chat.title}
-                    </span>
-                  </div>
-                  
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MoreHorizontal className="h-3 w-3" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation()
-                        }}
-                      >
-                        <Edit3 className="h-4 w-4 mr-2" />
-                        Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={(e) => handleDeleteChat(chat.id, e)}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+      <ScrollArea className="flex-1 px-3 py-4">
+        <div className="space-y-2">
+          {isLoading ? (
+            <div className="space-y-2">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-12 bg-muted rounded-md animate-pulse" />
               ))}
             </div>
-          ))}
-          
-          {chats.length === 0 && (
-            <div className="text-center py-8 text-sidebar-foreground/60">
-              <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-40" />
-              <p className="text-sm">No conversations yet</p>
-              <p className="text-xs mt-1">Start a new chat to begin</p>
+          ) : chatSessions.length === 0 ? (
+            <div className="text-center py-8">
+              <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">
+                No conversations yet
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Start a new chat to begin
+              </p>
             </div>
+          ) : (
+            chatSessions.map((session) => (
+              <div
+                key={session.id}
+                className={cn(
+                  "group flex items-center gap-3 p-3 rounded-md cursor-pointer hover:bg-muted/50 transition-colors",
+                  currentChatSession?.id === session.id && "bg-muted"
+                )}
+                onClick={() => selectChatSession(session.id)}
+              >
+                <MessageSquare className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {session.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatChatDate(session.createdAt)}
+                  </p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <MoreHorizontal className="h-3 w-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={(e) => handleDeleteChat(session.id, e)}
+                      className="text-destructive"
+                      disabled={deletingChatId === session.id}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      {deletingChatId === session.id ? 'Deleting...' : 'Delete'}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))
           )}
         </div>
       </ScrollArea>
 
-      <Separator />
-
-      {/* Footer */}
-      <div className="p-4">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent"
-            >
-              <Settings className="h-4 w-4 mr-2" />
-              Settings
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Monitor className="h-4 w-4 mr-2" />
-                Theme
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem onClick={() => setTheme('light')}>
-                  <Sun className="h-4 w-4 mr-2" />
-                  Light
-                  {theme === 'light' && <span className="ml-auto">✓</span>}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme('dark')}>
-                  <Moon className="h-4 w-4 mr-2" />
-                  Dark
-                  {theme === 'dark' && <span className="ml-auto">✓</span>}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme('system')}>
-                  <Monitor className="h-4 w-4 mr-2" />
-                  System
-                  {theme === 'system' && <span className="ml-auto">✓</span>}
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {/* User Section */}
+      <div className="p-4 border-t">
+        {user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="w-full justify-start gap-3 p-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={user.photoURL} alt={user.displayName || user.email} />
+                  <AvatarFallback>
+                    {user.displayName?.charAt(0) || user.email?.charAt(0) || <User className="h-4 w-4" />}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 text-left min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {user.displayName || user.email}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {user.email}
+                  </p>
+                </div>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem>
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={signOut}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <div className="text-center">
+            <p className="text-sm text-muted-foreground mb-2">
+              Sign in to save your chats
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
